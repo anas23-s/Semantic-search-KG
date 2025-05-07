@@ -22,6 +22,7 @@ interface NodeDetailsModalProps {
       }>;
     }>;
   } | null;
+  isLoading: boolean;
 }
 
 function isValidUrl(string: string) {
@@ -33,7 +34,7 @@ function isValidUrl(string: string) {
   }
 }
 
-export function NodeDetailsModal({ isOpen, onClose, nodeData }: NodeDetailsModalProps) {
+export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeDetailsModalProps) {
   const [selectedTab, setSelectedTab] = useState(0);
 
   const layout = {
@@ -106,33 +107,38 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData }: NodeDetailsModal
   ];
 
   const getGraphElements = () => {
-    if (!nodeData?.graph_paths[0]) {
+    if (!nodeData?.graph_paths?.[0]) {
       console.log('No graph paths available');
       return [];
     }
     
-    const { nodes, edges } = nodeData.graph_paths[0];
-    console.log('Graph data:', { nodes, edges });
-    
-    const elements = [
-      ...nodes.map(node => ({
-        data: {
-          id: node.id,
-          label: node.label,
-          ...node.properties
-        }
-      })),
-      ...edges.map(edge => ({
-        data: {
-          source: edge.source,
-          target: edge.target,
-          label: edge.type
-        }
-      }))
-    ];
-    
-    console.log('Cytoscape elements:', elements);
-    return elements;
+    try {
+      const { nodes, edges } = nodeData.graph_paths[0];
+      console.log('Graph data:', { nodes, edges });
+      
+      const elements = [
+        ...nodes.map(node => ({
+          data: {
+            id: node.id,
+            label: node.label,
+            ...node.properties
+          }
+        })),
+        ...edges.map(edge => ({
+          data: {
+            source: edge.source,
+            target: edge.target,
+            label: edge.type
+          }
+        }))
+      ];
+      
+      console.log('Cytoscape elements:', elements);
+      return elements;
+    } catch (error) {
+      console.error('Error processing graph data:', error);
+      return [];
+    }
   };
 
   return (
@@ -145,155 +151,176 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData }: NodeDetailsModal
             Node Details
           </Dialog.Title>
 
-          <Tab.Group selectedIndex={selectedTab} onChange={setSelectedTab}>
-            <Tab.List className="flex space-x-1 p-4 border-b">
-              <Tab
-                className={({ selected }) =>
-                  `px-4 py-2 rounded-lg ${
-                    selected
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`
-                }
-              >
-                Metadata
-              </Tab>
-              <Tab
-                className={({ selected }) =>
-                  `px-4 py-2 rounded-lg ${
-                    selected
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`
-                }
-              >
-                Graph View
-              </Tab>
-            </Tab.List>
+          {isLoading ? (
+            <div className="p-8 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+              <p className="mt-2 text-gray-600">Loading node details...</p>
+            </div>
+          ) : (
+            <Tab.Group selectedIndex={selectedTab} onChange={setSelectedTab}>
+              <Tab.List className="flex space-x-1 p-4 border-b">
+                <Tab
+                  className={({ selected }) =>
+                    `px-4 py-2 rounded-lg ${
+                      selected
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`
+                  }
+                >
+                  Metadata
+                </Tab>
+                <Tab
+                  className={({ selected }) =>
+                    `px-4 py-2 rounded-lg ${
+                      selected
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`
+                  }
+                >
+                  Graph View
+                </Tab>
+              </Tab.List>
 
-            <Tab.Panels>
-              <Tab.Panel className="p-4">
-                {nodeData && (
-                  <div className="space-y-4">
-                    {Object.entries(nodeData.metadata).map(([key, value]) => (
-                      <div key={key} className="grid grid-cols-3 gap-4">
-                        <div className="font-medium text-gray-700">{key}:</div>
-                        <div className="col-span-2 text-gray-900">
-                          {Array.isArray(value) ? (
-                            value.map((item, index) => (
-                              <span key={index}>
-                                {isValidUrl(item) ? (
-                                  <a
-                                    href={item}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-500 hover:underline"
-                                  >
-                                    {item}
-                                  </a>
-                                ) : (
-                                  item
-                                )}
-                                {index < value.length - 1 ? ', ' : ''}
-                              </span>
-                            ))
-                          ) : (
-                            isValidUrl(value) ? (
-                              <a
-                                href={value}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-500 hover:underline"
-                              >
-                                {value}
-                              </a>
+              <Tab.Panels>
+                <Tab.Panel className="p-4">
+                  {nodeData && (
+                    <div className="space-y-4">
+                      {Object.entries(nodeData.metadata).map(([key, value]) => (
+                        <div key={key} className="grid grid-cols-3 gap-4">
+                          <div className="font-medium text-gray-700">{key}:</div>
+                          <div className="col-span-2 text-gray-900">
+                            {Array.isArray(value) ? (
+                              value.map((item, index) => (
+                                <span key={index}>
+                                  {isValidUrl(item) ? (
+                                    <a
+                                      href={item}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:underline"
+                                    >
+                                      {item}
+                                    </a>
+                                  ) : (
+                                    item
+                                  )}
+                                  {index < value.length - 1 ? ', ' : ''}
+                                </span>
+                              ))
                             ) : (
-                              value
-                            )
-                          )}
+                              isValidUrl(value) ? (
+                                <a
+                                  href={value}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:underline"
+                                >
+                                  {value}
+                                </a>
+                              ) : (
+                                value
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {nodeData.wikipedia_uri && (
-                      <div className="mt-4">
-                        <a
-                          href={nodeData.wikipedia_uri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:underline"
-                        >
-                          View on Wikipedia
-                        </a>
+                      ))}
+                      {nodeData.wikipedia_uri && (
+                        <div className="mt-4">
+                          <a
+                            href={nodeData.wikipedia_uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:underline"
+                          >
+                            View on Wikipedia
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Tab.Panel>
+
+                <Tab.Panel className="p-4">
+                  <div className="h-[500px] border rounded-lg relative">
+                    {nodeData ? (
+                      getGraphElements().length > 0 ? (
+                        <>
+                          <CytoscapeComponent
+                            elements={getGraphElements()}
+                            style={{ width: '100%', height: '100%' }}
+                            layout={layout}
+                            stylesheet={stylesheet}
+                            cy={(cy) => {
+                              // Node click handler
+                              cy.on('tap', 'node', (evt) => {
+                                const node = evt.target;
+                                node.select();
+                              });
+                              
+                              // Zoom controls
+                              cy.on('mousewheel', (evt) => {
+                                if (evt.originalEvent instanceof WheelEvent && evt.originalEvent.ctrlKey) {
+                                  evt.preventDefault();
+                                  const zoom = cy.zoom();
+                                  const factor = evt.originalEvent.deltaY > 0 ? 0.9 : 1.1;
+                                  cy.zoom({
+                                    level: zoom * factor,
+                                    renderedPosition: {
+                                      x: evt.renderedPosition.x,
+                                      y: evt.renderedPosition.y
+                                    }
+                                  });
+                                }
+                              });
+
+                              // Add zoom buttons
+                              const zoomIn = document.createElement('button');
+                              zoomIn.innerHTML = '+';
+                              zoomIn.className = 'absolute top-2 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                              zoomIn.onclick = () => cy.zoom(cy.zoom() * 1.2);
+
+                              const zoomOut = document.createElement('button');
+                              zoomOut.innerHTML = '-';
+                              zoomOut.className = 'absolute top-12 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                              zoomOut.onclick = () => cy.zoom(cy.zoom() * 0.8);
+
+                              const reset = document.createElement('button');
+                              reset.innerHTML = '↺';
+                              reset.className = 'absolute top-22 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                              reset.onclick = () => {
+                                cy.fit();
+                                cy.center();
+                              };
+
+                              const container = cy.container();
+                              if (container) {
+                                container.appendChild(zoomIn);
+                                container.appendChild(zoomOut);
+                                container.appendChild(reset);
+                              }
+                            }}
+                          />
+                          <div className="absolute bottom-2 left-2 text-sm text-gray-500">
+                            {nodeData.graph_paths[0].nodes.length} nodes, {nodeData.graph_paths[0].edges.length} edges
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          No graph data available
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        No data available
                       </div>
                     )}
                   </div>
-                )}
-              </Tab.Panel>
-
-              <Tab.Panel className="p-4">
-                <div className="h-[500px] border rounded-lg relative">
-                  {nodeData && (
-                    <>
-                      <CytoscapeComponent
-                        elements={getGraphElements()}
-                        style={{ width: '100%', height: '100%' }}
-                        layout={layout}
-                        stylesheet={stylesheet}
-                        cy={(cy) => {
-                          // Node click handler
-                          cy.on('tap', 'node', (evt) => {
-                            const node = evt.target;
-                            node.select();
-                          });
-                          
-                          // Zoom controls
-                          cy.on('mousewheel', (evt) => {
-                            evt.preventDefault();
-                            const zoom = cy.zoom();
-                            const wheelDelta = evt.originalEvent instanceof WheelEvent ? evt.originalEvent.deltaY : 0;
-                            const factor = wheelDelta > 0 ? 0.9 : 1.1;
-                            cy.zoom({
-                              level: zoom * factor,
-                              renderedPosition: { x: evt.renderedPosition.x, y: evt.renderedPosition.y }
-                            });
-                          });
-
-                          // Add zoom buttons
-                          const zoomIn = document.createElement('button');
-                          zoomIn.innerHTML = '+';
-                          zoomIn.className = 'absolute top-2 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                          zoomIn.onclick = () => cy.zoom(cy.zoom() * 1.2);
-
-                          const zoomOut = document.createElement('button');
-                          zoomOut.innerHTML = '-';
-                          zoomOut.className = 'absolute top-12 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                          zoomOut.onclick = () => cy.zoom(cy.zoom() * 0.8);
-
-                          const reset = document.createElement('button');
-                          reset.innerHTML = '↺';
-                          reset.className = 'absolute top-22 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                          reset.onclick = () => {
-                            cy.fit();
-                            cy.center();
-                          };
-
-                          const container = cy.container();
-                          if (container) {
-                            container.appendChild(zoomIn);
-                            container.appendChild(zoomOut);
-                            container.appendChild(reset);
-                          }
-                        }}
-                      />
-                      <div className="absolute bottom-2 left-2 text-sm text-gray-500">
-                        {nodeData.graph_paths[0].nodes.length} nodes, {nodeData.graph_paths[0].edges.length} edges
-                      </div>
-                    </>
-                  )}
-                </div>
-              </Tab.Panel>
-            </Tab.Panels>
-          </Tab.Group>
+                </Tab.Panel>
+              </Tab.Panels>
+            </Tab.Group>
+          )}
 
           <div className="p-4 border-t">
             <button

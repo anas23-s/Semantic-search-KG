@@ -21,6 +21,7 @@ const MAX_VISIBLE_PAGES = 5;
 function App() {
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isNodeDetailsLoading, setIsNodeDetailsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [nodeDetails, setNodeDetails] = useState<any>(null);
@@ -58,6 +59,9 @@ function App() {
 
   const handleNodeClick = async (label: string) => {
     try {
+      setIsNodeDetailsLoading(true);
+      setError(null);
+      
       const response = await fetch(
         `http://localhost:5001/node-details?clickedLabel=${encodeURIComponent(label)}&searchedLabel=${encodeURIComponent(currentSearchTerm)}`
       );
@@ -71,7 +75,15 @@ function App() {
       setIsModalOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load node details');
+      setIsModalOpen(false);
+    } finally {
+      setIsNodeDetailsLoading(false);
     }
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setNodeDetails(null);
   };
 
   const getPaginatedResults = () => {
@@ -144,6 +156,11 @@ function App() {
                 <h2 className="text-xl font-semibold mb-2">{searchResults.exact_match.label}</h2>
                 <p className="text-gray-600">{searchResults.exact_match.definition}</p>
                 <div className="mt-2 text-sm text-blue-600">Exact Match (100% similarity)</div>
+                {isNodeDetailsLoading && (
+                  <div className="mt-2 text-sm text-gray-500">
+                    Loading details...
+                  </div>
+                )}
               </div>
             )}
 
@@ -162,6 +179,11 @@ function App() {
                       <div className="mt-2 text-sm text-gray-500">
                         Similarity: {node.similarity.toFixed(2)}%
                       </div>
+                      {isNodeDetailsLoading && (
+                        <div className="mt-2 text-sm text-gray-500">
+                          Loading details...
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -255,8 +277,9 @@ function App() {
 
       <NodeDetailsModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleModalClose}
         nodeData={nodeDetails}
+        isLoading={isNodeDetailsLoading}
       />
     </div>
   );
