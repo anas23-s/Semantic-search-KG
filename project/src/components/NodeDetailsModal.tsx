@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, Tab } from '@headlessui/react';
 import type { Core, ElementDefinition, LayoutOptions, StylesheetCSS } from 'cytoscape';
 import CytoscapeComponent from 'react-cytoscapejs';
@@ -23,6 +23,7 @@ interface NodeDetailsModalProps {
     }>;
   } | null;
   isLoading: boolean;
+  onNodeExpand?: (nodeId: string, relationType: string) => void;
 }
 
 function isValidUrl(string: string) {
@@ -34,8 +35,22 @@ function isValidUrl(string: string) {
   }
 }
 
-export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeDetailsModalProps) {
+export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading, onNodeExpand }: NodeDetailsModalProps) {
   const [selectedTab, setSelectedTab] = useState(0);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [relations, setRelations] = useState<string[]>([]);
+  const [highlightedRelation, setHighlightedRelation] = useState<string | null>(null);
+  const cyRef = useRef<Core | null>(null);
+
+  // Reset sidebar state when modal is opened for a new node or nodeData changes
+  useEffect(() => {
+    setSelectedNodeId(null);
+    setRelations([]);
+    setHighlightedRelation(null);
+    if (cyRef.current) {
+      cyRef.current.elements('edge').removeClass('highlighted-relation');
+    }
+  }, [isOpen, nodeData]);
 
   const layout = {
     name: 'cose',
@@ -103,6 +118,15 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeD
         'text-outline-color': '#2B6CB0',
         'text-outline-width': 2
       }
+    },
+    {
+      selector: '.highlighted-relation',
+      css: {
+        'line-color': '#f59e42',
+        'target-arrow-color': '#f59e42',
+        'width': 4,
+        'z-index': 9999,
+      }
     }
   ];
 
@@ -138,6 +162,29 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeD
     } catch (error) {
       console.error('Error processing graph data:', error);
       return [];
+    }
+  };
+
+  // Fetch relations for a node
+  const fetchRelations = async (nodeId: string) => {
+    try {
+      const res = await fetch(`http://localhost:5001/node-relations?nodeId=${nodeId}`);
+      if (!res.ok) throw new Error('Failed to fetch relations');
+      const data = await res.json();
+      setRelations(data.relations || []);
+    } catch (e) {
+      setRelations([]);
+    }
+  };
+
+  // Highlight edges of a given relation type
+  const highlightEdges = (relationType: string | null) => {
+    setHighlightedRelation(relationType);
+    if (cyRef.current) {
+      cyRef.current.elements('edge').removeClass('highlighted-relation');
+      if (relationType) {
+        cyRef.current.elements(`edge[label = "${relationType}"]`).addClass('highlighted-relation');
+      }
     }
   };
 
@@ -184,7 +231,7 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeD
               </Tab.List>
 
               <Tab.Panels>
-                <Tab.Panel className="p-4">
+                <Tab.Panel className="p-4 overflow-y-auto max-h-[calc(100vh-20rem)]">
                   {nodeData && (
                     <div className="space-y-4">
                       {Object.entries(nodeData.metadata).map(([key, value]) => (
@@ -243,79 +290,122 @@ export function NodeDetailsModal({ isOpen, onClose, nodeData, isLoading }: NodeD
                 </Tab.Panel>
 
                 <Tab.Panel className="p-4">
-                  <div className="h-[500px] border rounded-lg relative">
-                    {nodeData ? (
-                      getGraphElements().length > 0 ? (
-                        <>
-                          <CytoscapeComponent
-                            elements={getGraphElements()}
-                            style={{ width: '100%', height: '100%' }}
-                            layout={layout}
-                            stylesheet={stylesheet}
-                            cy={(cy) => {
-                              // Node click handler
-                              cy.on('tap', 'node', (evt) => {
-                                const node = evt.target;
-                                node.select();
-                              });
-                              
-                              // Zoom controls
-                              cy.on('mousewheel', (evt) => {
-                                if (evt.originalEvent instanceof WheelEvent && evt.originalEvent.ctrlKey) {
-                                  evt.preventDefault();
-                                  const zoom = cy.zoom();
-                                  const factor = evt.originalEvent.deltaY > 0 ? 0.9 : 1.1;
-                                  cy.zoom({
-                                    level: zoom * factor,
-                                    renderedPosition: {
-                                      x: evt.renderedPosition.x,
-                                      y: evt.renderedPosition.y
-                                    }
-                                  });
-                                }
-                              });
-
-                              // Add zoom buttons
-                              const zoomIn = document.createElement('button');
-                              zoomIn.innerHTML = '+';
-                              zoomIn.className = 'absolute top-2 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                              zoomIn.onclick = () => cy.zoom(cy.zoom() * 1.2);
-
-                              const zoomOut = document.createElement('button');
-                              zoomOut.innerHTML = '-';
-                              zoomOut.className = 'absolute top-12 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                              zoomOut.onclick = () => cy.zoom(cy.zoom() * 0.8);
-
-                              const reset = document.createElement('button');
-                              reset.innerHTML = '↺';
-                              reset.className = 'absolute top-22 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
-                              reset.onclick = () => {
-                                cy.fit();
-                                cy.center();
-                              };
-
-                              const container = cy.container();
-                              if (container) {
-                                container.appendChild(zoomIn);
-                                container.appendChild(zoomOut);
-                                container.appendChild(reset);
-                              }
+                  <div className="h-[500px] border rounded-lg relative flex">
+                    {/* Sidebar for relations */}
+                    {selectedNodeId && relations.length > 0 && (
+                      <div className="min-w-[14rem] max-w-xs bg-gray-50 border-r h-full p-2 overflow-y-auto">
+                        <div className="font-semibold mb-2">Relations</div>
+                        {relations.filter(rel => rel !== 'wikiPage').map((rel) => (
+                          <button
+                            key={rel}
+                            className={`block w-full text-left px-2 py-1 rounded mb-1 break-words whitespace-normal ${highlightedRelation === rel ? 'bg-orange-200' : 'hover:bg-gray-200'}`}
+                            style={{ wordBreak: 'break-word' }}
+                            onClick={() => {
+                              if (onNodeExpand) onNodeExpand(selectedNodeId, rel);
+                              highlightEdges(rel);
                             }}
-                          />
-                          <div className="absolute bottom-2 left-2 text-sm text-gray-500">
-                            {nodeData.graph_paths[0].nodes.length} nodes, {nodeData.graph_paths[0].edges.length} edges
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          No graph data available
-                        </div>
-                      )
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        No data available
+                          >
+                            {rel}
+                          </button>
+                        ))}
+                        <button
+                          className="block w-full text-left px-2 py-1 rounded mt-2 bg-gray-200"
+                          onClick={() => {
+                            setSelectedNodeId(null);
+                            setRelations([]);
+                            highlightEdges(null);
+                          }}
+                        >
+                          Clear Selection
+                        </button>
                       </div>
                     )}
+                    {/* Graph area */}
+                    <div className="flex-1 relative">
+                      {nodeData ? (
+                        getGraphElements().length > 0 ? (
+                          <>
+                            <CytoscapeComponent
+                              elements={getGraphElements()}
+                              style={{ width: '100%', height: '100%' }}
+                              layout={layout}
+                              stylesheet={stylesheet}
+                              cy={(cy) => {
+                                cyRef.current = cy;
+                                cy.on('tap', 'node', async (evt) => {
+                                  const node = evt.target;
+                                  const nodeId = node.id();
+                                  node.select();
+                                  setSelectedNodeId(nodeId);
+                                  await fetchRelations(nodeId);
+                                });
+                                cy.on('tap', (event) => {
+                                  if (event.target === cy) {
+                                    cy.elements().unselect();
+                                    setSelectedNodeId(null);
+                                    setRelations([]);
+                                    highlightEdges(null);
+                                  }
+                                });
+                                
+                                // Zoom controls
+                                cy.on('mousewheel', (evt) => {
+                                  if (evt.originalEvent instanceof WheelEvent && evt.originalEvent.ctrlKey) {
+                                    evt.preventDefault();
+                                    const zoom = cy.zoom();
+                                    const factor = evt.originalEvent.deltaY > 0 ? 0.9 : 1.1;
+                                    cy.zoom({
+                                      level: zoom * factor,
+                                      renderedPosition: {
+                                        x: evt.renderedPosition.x,
+                                        y: evt.renderedPosition.y
+                                      }
+                                    });
+                                  }
+                                });
+
+                                // Add zoom buttons
+                                const zoomIn = document.createElement('button');
+                                zoomIn.innerHTML = '+';
+                                zoomIn.className = 'absolute top-2 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                                zoomIn.onclick = () => cy.zoom(cy.zoom() * 1.2);
+
+                                const zoomOut = document.createElement('button');
+                                zoomOut.innerHTML = '-';
+                                zoomOut.className = 'absolute top-12 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                                zoomOut.onclick = () => cy.zoom(cy.zoom() * 0.8);
+
+                                const reset = document.createElement('button');
+                                reset.innerHTML = '↺';
+                                reset.className = 'absolute top-22 right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg font-bold cursor-pointer hover:bg-gray-100';
+                                reset.onclick = () => {
+                                  cy.fit();
+                                  cy.center();
+                                };
+
+                                const container = cy.container();
+                                if (container) {
+                                  container.appendChild(zoomIn);
+                                  container.appendChild(zoomOut);
+                                  container.appendChild(reset);
+                                }
+                              }}
+                            />
+                            <div className="absolute bottom-2 left-2 text-sm text-gray-500">
+                              {nodeData.graph_paths[0].nodes.length} nodes, {nodeData.graph_paths[0].edges.length} edges
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-gray-500">
+                            No graph data available
+                          </div>
+                        )
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          No data available
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Tab.Panel>
               </Tab.Panels>
